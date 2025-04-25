@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.env
+gene_go_network.gexf
+gene_go_relationships.txt
+data/goa_human.gaf
