@@ -37,7 +37,7 @@ def build_graph(data_path):
 
 
 def load_graphml_graph(graph_path):
-    G_graphml = nx.read_graphml("gene_go_network.graphml")
+    G_graphml = nx.read_graphml(graph_path)
     return G_graphml
 
 
