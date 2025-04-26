@@ -1,38 +1,67 @@
 import networkx as nx
-from langchain.agents import (
-    AgentExecutor,
-    AgentType,
-    Tool,
-    create_tool_calling_agent,
-    initialize_agent,
-)
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder, PromptTemplate
-from langchain.schema import HumanMessage, SystemMessage
+import pandas as pd
+from langchain.agents import AgentType, Tool, initialize_agent
 from langchain.tools import tool
 from langchain_openai import ChatOpenAI
 
-# Load your graph
+# Load graph
 G = nx.read_graphml("gene_go_network.graphml")
 
+# Load gene-pathway links
+gene_pathway_df = pd.read_csv("data/gene_pathway_links.csv")
 
-# Define tools that operate on your graph
+
+def get_genes_by_disease(disease_name: str) -> str:
+    """Find all genes associated with a disease via KEGG pathways
+
+    Args:
+        disease_name (str): The name of the disease
+
+    Returns:
+        str: A string listing the genes associated with the disease
+    """
+    matches = gene_pathway_df[
+        gene_pathway_df["pathway"].str.lower() == disease_name.lower()
+    ]
+    gene_list = matches["gene_id"].unique().tolist()
+    if not gene_list:
+        return f"No genes found for the disease: {disease_name}"
+    return f"Genes involved in {disease_name}: {', '.join(gene_list)}"
+
+
 @tool
-def get_gene_go_terms(gene_symbol):
-    """Find all GO terms associated with a gene"""
+def get_gene_go_terms(gene_symbol: str) -> str:
+    """Find all GO terms associated with a gene
+
+    Args:
+        gene_symbol (str): the gene symbol
+
+    Returns:
+        _str: A string listing the GO terms associated with the gene
+    """
     if gene_symbol not in G.nodes():
         return f"Gene {gene_symbol} not found in the knowledge base."
 
     go_terms = []
-    for neighbor in G.neighbors(gene_symbol):
-        if G.nodes[neighbor].get("type") == "go_term":
-            go_terms.append(neighbor)
+    go_terms = [
+        n for n in G.neighbors(gene_symbol) if G.nodes[n].get("type") == "go_term"
+    ]
+    if not go_terms:
+        return f"No GO terms found for gene {gene_symbol}."
 
     return f"Gene {gene_symbol} is associated with GO terms: {', '.join(go_terms)}"
 
 
 @tool
-def get_genes_by_go_term(go_term):
-    """Find all genes with a specific GO term"""
+def get_genes_by_go_term(go_term: str) -> str:
+    """Find all genes with a specific GO term
+
+    Args:
+        go_term (str): the GO term ID
+
+    Returns:
+        str: A string listing the genes associated with the GO term
+    """
     if go_term not in G.nodes():
         return f"GO term {go_term} not found in the knowledge base."
 
@@ -45,91 +74,124 @@ def get_genes_by_go_term(go_term):
 
 
 @tool
-def get_shared_go_terms(gene1, gene2):
-    """Find GO terms shared between two genes"""
-    if gene1 not in G.nodes():
-        return f"Gene {gene1} not found in the knowledge base."
-    if gene2 not in G.nodes():
-        return f"Gene {gene2} not found in the knowledge base."
+def get_diseases_by_gene(gene_id: str) -> str:
+    """Φind all diseases a gene is involved in via KEGG pathways
 
-    gene1_terms = set(
-        n for n in G.neighbors(gene1) if G.nodes[n].get("type") == "go_term"
+    Args:
+        gene_id (str): The gene ID
+
+    Returns:
+        str: A string listing the diseases associated with the gene
+    """
+    matches = gene_pathway_df[gene_pathway_df["gene_id"].str.lower() == gene_id.lower()]
+    disease_list = matches["pathway"].unique().tolist()
+    if not disease_list:
+        return f"No diseases found for gene {gene_id}."
+    return f"Gene {gene_id} is involved in the following diseases: {', '.join(disease_list)}"
+
+
+@tool
+def generate_hypothesis(input_str: str) -> str:
+    """enerate a hypothesis about a gene's potential role in a disease
+
+    Args:
+        input_str (str): Input string containing gene ID and disease name in the format "gene_id, disease_name"
+
+    Returns:
+        str: A hypothesis about the gene's potential role in the disease
+    """
+
+    try:
+        gene_id, disease_name = [x.strip() for x in input_str.split(",", 1)]
+    except ValueError:
+        return "Please provide input in format: 'gene_id, disease_name'"
+
+    # Check gene-disease association
+    diseases = get_diseases_by_gene(gene_id)
+    if disease_name.lower() not in diseases.lower():
+        return f"Gene {gene_id} is not directly associated with {disease_name} in pathway data."
+
+    # Get GO terms
+    go_terms = get_gene_go_terms(gene_id)
+    if "not found" in go_terms:
+        return go_terms
+
+    # Generate hypothesis
+    return (
+        f"Hypothesis for {gene_id} in {disease_name}:\n"
+        f"1. Pathway data confirms association\n"
+        f"2. Gene's GO terms suggest potential mechanisms: {go_terms}\n"
+        f"3. Potential roles: Based on its annotations, {gene_id} might contribute to {disease_name} "
+        "through these biological processes or molecular functions."
     )
-    gene2_terms = set(
-        n for n in G.neighbors(gene2) if G.nodes[n].get("type") == "go_term"
-    )
-    shared = gene1_terms.intersection(gene2_terms)
-
-    return f"Genes {gene1} and {gene2} share GO terms: {', '.join(shared)}"
 
 
-# Define tools list
+@tool
+def find_shared_mechanisms(genes_input: str) -> dict:
+    """Find shared GO terms between two genes that might indicate common mechanisms
+
+    Args:
+        genes_input (str): Input string containing two gene symbols separated by a comma
+        (e.g., "SOX9, TP53")
+
+    Returns:
+        dict: A dictionary containing the two genes, their shared GO terms, and the count of shared terms
+    """
+    genes = genes_input.split(",")
+    if len(genes) != 2:
+        return {
+            "error": "Please provide exactly two gene symbols, separated by a comma."
+        }
+    gene1, gene2 = genes[0].strip(), genes[1].strip()
+    if gene1 not in G or gene2 not in G:
+        return {"error": "One or both genes not found in graph"}
+
+    # Get GO terms for both genes
+    go1 = set(n for n in G.neighbors(gene1) if G.nodes[n].get("type") == "go_term")
+    go2 = set(n for n in G.neighbors(gene2) if G.nodes[n].get("type") == "go_term")
+
+    shared = list(go1 & go2)
+
+    return {"genes": [gene1, gene2], "shared_go_terms": shared, "count": len(shared)}
+
+
 tools = [
+    Tool(
+        name="GetDiseasesByGene",
+        func=get_diseases_by_gene,
+        description="Finds diseases associated with a gene. Input: gene ID (e.g., 'hsa:1234')",
+    ),
+    Tool(
+        name="GetGenesByDisease",
+        func=get_genes_by_disease,
+        description="Finds genes associated with a disease. Input: disease name (e.g., 'Alzheimer disease')",
+    ),
     Tool(
         name="GetGeneGOTerms",
         func=get_gene_go_terms,
-        description="Finds all GO terms associated with a specific gene. Input should be a single gene symbol (e.g., 'SOX9'). Returns a list of GO terms annotating that gene.",
+        description="Finds GO terms for a gene. Input: gene symbol (e.g., 'SOX9')",
     ),
     Tool(
-        name="GetGenesWithGOTerm",
-        func=get_genes_by_go_term,
-        description="Finds all genes annotated with a specific GO term. Input should be a GO term ID (e.g., 'GO:0060350'). Returns a list of genes associated with that GO term.",
+        name="FindSharedMechanisms",
+        func=find_shared_mechanisms,
+        description="Find shared GO terms between two genes that might indicate common mechanisms. Input: two gene symbols (e.g., 'SOX9, TP53'). Returns shared GO terms and their count.",
     ),
     Tool(
-        name="GetSharedGOTerms",
-        func=get_shared_go_terms,
-        description="Finds GO terms shared between two genes. Input should be two gene symbols separated by a comma (e.g., 'SOX9,ACAN'). Returns a list of GO terms common to both genes.",
+        name="GenerateHypothesis",
+        func=generate_hypothesis,
+        description="Generates a hypothesis about gene-disease mechanisms. Input: gene ID and disease name",
     ),
 ]
 
-# Set up the LLM
 llm = ChatOpenAI(model="gpt-4o", temperature=0)
 
-# Create the correct prompt for ReAct agent
-prompt = ChatPromptTemplate.from_messages(
-    [
-        SystemMessage(
-            content="""
-            You are a bioinformatics research assistant with expertise in gene function, pathways, and diseases.
-            You have access to a knowledge base of gene-GO term relationships.
-            Based on this data and your knowledge, generate hypotheses about gene functions and disease associations.
-
-            Remember that Gene Ontology (GO) terms represent biological processes, molecular functions, and cellular components.
-            GO:0060350 refers to "endochondral bone morphogenesis" for example.
-
-            You have access to the following tools:
-
-            You can use the following tools: {tool_names}
-
-            Detailed tool descriptions:
-            {tools}
-            
-            Use these tools to explore the gene-GO relationships and formulate your hypotheses.
-            """
-        ),
-        HumanMessage(content="{input}"),
-        MessagesPlaceholder(variable_name="agent_scratchpad"),
-    ]
-)
-
-prompt = """
-        You are a bioinformatics research assistant with expertise in gene function, pathways, and diseases.
-        You have access to a knowledge base of gene-GO term relationships.
-        Based on this data and your knowledge, generate hypotheses about gene functions and disease associations.
-
-        Remember that Gene Ontology (GO) terms represent biological processes, molecular functions, and cellular components.
-        GO:0060350 refers to "endochondral bone morphogenesis" for example.
-        
-        Use the tools to explore the gene-GO relationships and formulate your hypotheses.
-        """
-
-# Create the agent
-# agent = create_tool_calling_agent(llm=llm, tools=tools, prompt=prompt)
-# agent_executor = AgentExecutor.from_agent_and_tools(
-#     agent=agent, tools=tools, verbose=True
-# )
-# agent_executor = AgentExecutor(agent=agent, tools=tools)
-
+prompt = """You are a biomedical research assistant with deep knowledge of gene function analysis.
+        For mechanism questions, follow this protocol:
+        1. Verify gene-disease association
+        2. Analyze gene's GO term profile
+        3. Compare with other disease genes
+        4. Generate mechanistic hypothesis
+        Use the full power of the GO graph when available."""
 
 agent_executor = initialize_agent(
     tools=tools,
@@ -142,10 +204,11 @@ agent_executor = initialize_agent(
     agent_kwargs={"prefix": prompt},
 )
 
-# Example usage
-response = agent_executor.invoke(
-    {
-        "input": "What diseases might SOX9 be associated with based on its GO annotations?"
-    }
-)
+query = "What diseases might SOX9 be associated with?"
+# query = "Which genes are involved in Alzheimer disease?"
+# query = "Which genes are involved in Parkinson's disease?"
+# query = "What diseases is the gene hsa:4535 (APP) involved in?"
+query = "How might SOX9 be involved in Colorectal cancer?"
+
+response = agent_executor.invoke({"input": query})
 print(response["output"])
