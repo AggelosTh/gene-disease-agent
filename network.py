@@ -3,8 +3,12 @@ import networkx as nx
 import pandas as pd
 
 
-def build_graph(data_path):
-
+def build_graph(data_path: str):
+    """Build a graph from the Gene Ontology Annotation (GOA) data.
+    Args:
+        data_path (str): Path to the GOA data file.
+    """
+    # Load the GOA data
     df_goa = pd.read_csv(data_path)
 
     # Create the graph
@@ -29,12 +33,25 @@ def build_graph(data_path):
     )
 
 
-def load_graphml_graph(graph_path):
+def load_graphml_graph(graph_path: str) -> nx.Graph:
+    """Load a graph from a GraphML file.
+    Args:
+        graph_path (str): Path to the GraphML file.
+    Returns:
+        nx.Graph: The loaded graph.
+    """
     G_graphml = nx.read_graphml(graph_path)
     return G_graphml
 
 
-def visualize_subgraph(G, max_nodes=100):
+def visualize_subgraph(G: nx.Graph, max_nodes: int = 100):
+    """Visualize a subgraph of the Gene Ontology network.
+    Args:
+        G (nx.Graph): The graph to visualize.
+        max_nodes (int): Maximum number of nodes to include in the visualization.
+    """
+    # Check if the number of nodes exceeds the maximum limit
+    # If the graph is too large, we will create a subgraph
     if G.number_of_nodes() > max_nodes:
         # Get a subgraph with some of the highest-degree gene nodes
         gene_nodes = [n for n, attr in G.nodes(data=True) if attr.get("type") == "gene"]
@@ -59,6 +76,7 @@ def visualize_subgraph(G, max_nodes=100):
         nodes_to_include = gene_nodes_by_degree + list(connected_go_terms)
         subG = G.subgraph(nodes_to_include)
     else:
+        # If the graph is small enough, use the whole graph
         subG = G
 
     pos = nx.spring_layout(subG, seed=42)
