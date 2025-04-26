@@ -7,7 +7,14 @@ import pandas as pd
 from config import ROOT_DIR
 
 
-def parse_kgml_file(file_path):
+def parse_kgml_file(file_path: str) -> list:
+    """ "Parse a KGML file and extract gene-pathway links.
+    Args:
+        file_path (str): Path to the KGML file.
+    Returns:
+        list: A list of dictionaries containing gene IDs and their corresponding pathways.
+    """
+
     tree = ET.parse(file_path)
     root = tree.getroot()
 
@@ -29,7 +36,13 @@ def parse_kgml_file(file_path):
     return gene_pathway_links
 
 
-def parse_kgml_directory(directory_path):
+def parse_kgml_directory(directory_path: str) -> list:
+    """Parse all KGML files in a directory and extract gene-pathway links.
+    Args:
+        directory_path (str): Path to the directory containing KGML files.
+    Returns:
+        list: A list of dictionaries containing gene IDs and their corresponding pathways.
+    """
     all_links = []
     directory = Path(directory_path)
 
@@ -40,12 +53,24 @@ def parse_kgml_directory(directory_path):
     return all_links
 
 
-def save_to_csv(links, output_path):
+def save_to_csv(links: str, output_path: str):
+    """Save the extracted links to a CSV file.
+    Args:
+        links (list): A list of dictionaries containing gene IDs and their corresponding pathways.
+        output_path (str): Path to the output CSV file.
+    """
     df = pd.DataFrame(links)
     df.to_csv(output_path, index=False)
 
 
-def parse_gaf_file(file_path):
+def parse_gaf_file(file_path: str) -> pd.DataFrame:
+    """Parse a GAF file and extract gene-GO term links.
+    Args:
+        file_path (str): Path to the GAF file.
+    Returns:
+        pd.DataFrame: A DataFrame containing gene symbols and their corresponding GO terms.
+    """
+    # Read the GAF file, skipping comments and using tab as the separator
     df = pd.read_csv(file_path, sep="\t", comment="!", header=None, low_memory=False)
     df = df[[2, 4]]  # Column 2: gene symbol, Column 5: GO term
     df.columns = ["gene_symbol", "go_term"]
