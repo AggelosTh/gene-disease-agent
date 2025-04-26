@@ -1,5 +1,6 @@
 import networkx as nx
 import pandas as pd
+from fuzzywuzzy import process
 from langchain.agents import AgentType, Tool, initialize_agent
 from langchain.tools import tool
 from langchain_openai import ChatOpenAI
@@ -20,8 +21,15 @@ def get_genes_by_disease(disease_name: str) -> str:
     Returns:
         str: A string listing the genes associated with the disease
     """
+    all_diseases = gene_pathway_df["pathway"].unique().tolist()
+
+    # Find the closest match to the disease name
+    best_match, score = process.extractOne(disease_name, all_diseases)
+    if score < 80:
+        return f"No close match found for the disease name '{disease_name}'. Please check the spelling or provide a more specific name."
+
     matches = gene_pathway_df[
-        gene_pathway_df["pathway"].str.lower() == disease_name.lower()
+        gene_pathway_df["pathway"].str.lower() == best_match.lower()
     ]
     gene_list = matches["gene_id"].unique().tolist()
     if not gene_list:
@@ -75,7 +83,7 @@ def get_genes_by_go_term(go_term: str) -> str:
 
 @tool
 def get_diseases_by_gene(gene_id: str) -> str:
-    """Φind all diseases a gene is involved in via KEGG pathways
+    """Find all diseases a gene is involved in via KEGG pathways
 
     Args:
         gene_id (str): The gene ID
@@ -169,12 +177,12 @@ tools = [
     Tool(
         name="GetGeneGOTerms",
         func=get_gene_go_terms,
-        description="Finds GO terms for a gene. Input: gene symbol (e.g., 'SOX9')",
+        description="Finds GO terms for a gene. Input: gene symbol (e.g., 'APOE')",
     ),
     Tool(
         name="FindSharedMechanisms",
         func=find_shared_mechanisms,
-        description="Find shared GO terms between two genes that might indicate common mechanisms. Input: two gene symbols (e.g., 'SOX9, TP53'). Returns shared GO terms and their count.",
+        description="Find shared GO terms between two genes that might indicate common mechanisms. Input: two gene symbols (e.g., 'APOE, TP53'). Returns shared GO terms and their count.",
     ),
     Tool(
         name="GenerateHypothesis",
@@ -204,11 +212,14 @@ agent_executor = initialize_agent(
     agent_kwargs={"prefix": prompt},
 )
 
-query = "What diseases might SOX9 be associated with?"
+query = "What diseases might APOE be associated with?"
 # query = "Which genes are involved in Alzheimer disease?"
 # query = "Which genes are involved in Parkinson's disease?"
 # query = "What diseases is the gene hsa:4535 (APP) involved in?"
-query = "How might SOX9 be involved in Colorectal cancer?"
+# query = "How might SOX9 be involved in Colorectal cancer?"
+query = "Which genes are related to type II diabetes mellitus?"
+query = "Which genes are related to type II diabetes?"
+# query = "What type II diabetes genes are associated with the GO term GO:0005975 (carbohydrate metabolic process)?"
 
 response = agent_executor.invoke({"input": query})
 print(response["output"])
