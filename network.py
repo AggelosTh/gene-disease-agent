@@ -4,6 +4,7 @@ import pandas as pd
 
 
 def build_graph(data_path):
+
     df_goa = pd.read_csv(data_path)
 
     # Create the graph
@@ -16,14 +17,6 @@ def build_graph(data_path):
         G.add_edge(row["gene_symbol"], row["go_term"], relation="go_annotation")
 
     nx.write_graphml(G, "gene_go_network.graphml")
-    nx.write_gexf(G, "gene_go_network.gexf")
-
-    with open("gene_go_relationships.txt", "w") as f:
-        f.write("gene_symbol\tgo_term\trelation\n")
-        for u, v, data in G.edges(data=True):
-            gene = u if G.nodes[u]["type"] == "gene" else v
-            go_term = v if G.nodes[v]["type"] == "go_term" else u
-            f.write(f"{gene}\t{go_term}\t{data['relation']}\n")
 
     print(f"Graph Statistics:")
     print(f"Total nodes: {G.number_of_nodes()}")
