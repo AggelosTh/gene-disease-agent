@@ -1,20 +1,43 @@
 import os
+import pickle
+import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import pandas as pd
+import requests
 
 from config import ROOT_DIR
 
 
-def parse_kgml_file(file_path: str) -> list:
-    """ "Parse a KGML file and extract gene-pathway links.
-    Args:
-        file_path (str): Path to the KGML file.
-    Returns:
-        list: A list of dictionaries containing gene IDs and their corresponding pathways.
-    """
+def get_gene_symbol(gene_id: str) -> str:
+    """Fetch gene symbol from KEGG API given a gene ID."""
+    url = f"http://rest.kegg.jp/get/{gene_id}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        lines = response.text.split("\n")
+        for line in lines:
+            if line.startswith("SYMBOL"):
+                parts = line.split()
+                if len(parts) > 1:
+                    return parts[1].strip(",")
+    return None
 
+
+def fetch_gene_id_to_symbol_mapping(gene_ids: list, sleep_time: float = 0.5) -> dict:
+    """Fetch gene symbols for a list of gene IDs."""
+    gene_id_to_symbol = {}
+    for gene_id in gene_ids:
+        if gene_id not in gene_id_to_symbol:  # avoid duplicate requests
+            symbol = get_gene_symbol(gene_id)
+            if symbol:
+                gene_id_to_symbol[gene_id] = symbol
+            time.sleep(sleep_time)  # be polite to KEGG servers
+    return gene_id_to_symbol
+
+
+def parse_kgml_file(file_path: str) -> list:
+    """Parse a KGML file and extract gene-pathway links."""
     tree = ET.parse(file_path)
     root = tree.getroot()
 
@@ -30,6 +53,7 @@ def parse_kgml_file(file_path: str) -> list:
                         "gene_id": gene_id,
                         "pathway": pathway_name,
                         "source": file_path.name,
+                        "link": entry.attrib.get("link", ""),
                     }
                 )
 
@@ -37,12 +61,7 @@ def parse_kgml_file(file_path: str) -> list:
 
 
 def parse_kgml_directory(directory_path: str) -> list:
-    """Parse all KGML files in a directory and extract gene-pathway links.
-    Args:
-        directory_path (str): Path to the directory containing KGML files.
-    Returns:
-        list: A list of dictionaries containing gene IDs and their corresponding pathways.
-    """
+    """Parse all KGML files in a directory and extract gene-pathway links."""
     all_links = []
     directory = Path(directory_path)
 
@@ -53,23 +72,14 @@ def parse_kgml_directory(directory_path: str) -> list:
     return all_links
 
 
-def save_to_csv(links: str, output_path: str):
-    """Save the extracted links to a CSV file.
-    Args:
-        links (list): A list of dictionaries containing gene IDs and their corresponding pathways.
-        output_path (str): Path to the output CSV file.
-    """
+def save_to_csv(links: list, output_path: str):
+    """Save the extracted links to a CSV file."""
     df = pd.DataFrame(links)
     df.to_csv(output_path, index=False)
 
 
 def parse_gaf_file(file_path: str) -> pd.DataFrame:
-    """Parse a GAF file and extract gene-GO term links.
-    Args:
-        file_path (str): Path to the GAF file.
-    Returns:
-        pd.DataFrame: A DataFrame containing gene symbols and their corresponding GO terms.
-    """
+    """Parse a GAF file and extract gene-GO term links."""
     # Read the GAF file, skipping comments and using tab as the separator
     df = pd.read_csv(file_path, sep="\t", comment="!", header=None, low_memory=False)
     df = df[[2, 4]]  # Column 2: gene symbol, Column 5: GO term
@@ -78,10 +88,35 @@ def parse_gaf_file(file_path: str) -> pd.DataFrame:
     return df
 
 
-kgml_links = parse_kgml_directory(os.path.join(ROOT_DIR, "data/KGML"))
+if __name__ == "__main__":
+    # Parse KGML files
+    kgml_links = parse_kgml_directory(os.path.join(ROOT_DIR, "data/KGML"))
 
-df_kgml = pd.DataFrame(kgml_links)
-df_kgml.to_csv(os.path.join(ROOT_DIR, "data/gene_pathway_links.csv"))
+    # Collect all unique gene IDs
+    unique_gene_ids = list({link["gene_id"] for link in kgml_links})
 
-df_goa = parse_gaf_file(os.path.join(ROOT_DIR, "data/goa_human.gaf"))
-df_goa.to_csv(os.path.join(ROOT_DIR, "data/gene_go_links.csv"), index=False)
+    # Fetch gene symbols
+    mapping_file = os.path.join(ROOT_DIR, "data/gene_id_to_symbol.pkl")
+    if os.path.exists(mapping_file):
+        print("Loading cached gene_id to symbol mapping...")
+        with open(mapping_file, "rb") as f:
+            gene_id_to_symbol = pickle.load(f)
+    else:
+        print("Fetching gene_id to symbol mapping...")
+        gene_id_to_symbol = fetch_gene_id_to_symbol_mapping(unique_gene_ids)
+        with open(mapping_file, "wb") as f:
+            pickle.dump(gene_id_to_symbol, f)
+
+    # Add gene symbols to the links
+    for link in kgml_links:
+        link["gene_symbol"] = gene_id_to_symbol.get(link["gene_id"], None)
+
+    # Save updated links
+    df_kgml = pd.DataFrame(kgml_links)
+    df_kgml.to_csv(os.path.join(ROOT_DIR, "data/gene_pathway_links.csv"), index=False)
+    print("KGML files parsed and saved.")
+
+    # Parse GAF file
+    df_goa = parse_gaf_file(os.path.join(ROOT_DIR, "data/goa_human.gaf"))
+    df_goa.to_csv(os.path.join(ROOT_DIR, "data/gene_go_links.csv"), index=False)
+    print("GAF file parsed and saved.")

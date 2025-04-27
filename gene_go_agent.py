@@ -1,3 +1,5 @@
+import pickle
+
 import networkx as nx
 import pandas as pd
 from fuzzywuzzy import process
@@ -12,6 +14,24 @@ G = nx.read_graphml("gene_go_network.graphml")
 # Load gene-pathway links
 print("Loading gene-pathway links...")
 gene_pathway_df = pd.read_csv("data/gene_pathway_links.csv")
+
+# Load gene ID to symbol mapping
+print("Loading gene ID to symbol mapping...")
+with open("data/gene_id_to_symbol.pkl", "rb") as f:
+    gene_id_to_symbol = pickle.load(f)
+
+# Create reverse mapping
+symbol_to_gene_id = {v: k for k, v in gene_id_to_symbol.items()}
+
+
+def convert_id_to_symbol(gene_id):
+    """Convert a gene ID to its symbol"""
+    return gene_id_to_symbol.get(gene_id, gene_id)
+
+
+def convert_symbol_to_id(gene_symbol):
+    """Convert a gene symbol to its ID"""
+    return symbol_to_gene_id.get(gene_symbol, gene_symbol)
 
 
 @tool
@@ -34,10 +54,16 @@ def get_genes_by_disease(disease_name: str) -> str:
     matches = gene_pathway_df[
         gene_pathway_df["pathway"].str.lower() == best_match.lower()
     ]
-    gene_list = matches["gene_id"].unique().tolist()
-    if not gene_list:
+    gene_ids = matches["gene_id"].unique().tolist()
+
+    # Convert gene IDs to symbols
+    gene_symbols = [convert_id_to_symbol(gene_id) for gene_id in gene_ids]
+    gene_symbols = [symbol for symbol in gene_symbols if symbol is not None]
+
+    if not gene_symbols:
         return f"No genes found for the disease: {disease_name}"
-    return f"Genes involved in {disease_name}: {', '.join(gene_list[:10])}{'... and ' + str(len(gene_list) - 10) + ' more genes' if len(gene_list) > 10 else ''}"
+
+    return f"Genes involved in {best_match}: {', '.join(gene_symbols[:10])}{'... and ' + str(len(gene_symbols) - 10) + ' more genes' if len(gene_symbols) > 10 else ''}"
 
 
 @tool
@@ -85,54 +111,73 @@ def get_genes_by_go_term(go_term: str) -> str:
 
 
 @tool
-def get_diseases_by_gene(gene_id: str) -> str:
+def get_diseases_by_gene(gene_input: str) -> str:
     """Find all diseases a gene is involved in via KEGG pathways
 
     Args:
-        gene_id (str): The gene ID
+        gene_input (str): The gene ID or symbol
 
     Returns:
         str: A string listing the diseases associated with the gene
     """
-    matches = gene_pathway_df[gene_pathway_df["gene_id"].str.lower() == gene_id.lower()]
+    # Check if input is a gene symbol and convert to ID if needed
+    gene_id = gene_input
+    if not gene_input.startswith("hsa:"):
+        gene_id = convert_symbol_to_id(gene_input)
+        if gene_id == gene_input and not gene_input.startswith("hsa:"):
+            return f"Could not find gene ID for symbol {gene_input}."
+
+    matches = gene_pathway_df[gene_pathway_df["gene_id"] == gene_id]
     disease_list = matches["pathway"].unique().tolist()
+
     if not disease_list:
-        return f"No diseases found for gene {gene_id}."
-    return f"Gene {gene_id} is involved in the following diseases: {', '.join(disease_list)}"
+        return f"No diseases found for gene {gene_input} (ID: {gene_id})."
+
+    return f"Gene {gene_input} (ID: {gene_id}) is involved in the following diseases: {', '.join(disease_list)}"
 
 
 @tool
 def generate_hypothesis(input_str: str) -> str:
-    """enerate a hypothesis about a gene's potential role in a disease
+    """Generate a hypothesis about a gene's potential role in a disease
 
     Args:
-        input_str (str): Input string containing gene ID and disease name in the format "gene_id, disease_name"
+        input_str (str): Input string containing gene ID or symbol and disease name in the format "gene, disease_name"
 
     Returns:
         str: A hypothesis about the gene's potential role in the disease
     """
-
     try:
-        gene_id, disease_name = [x.strip() for x in input_str.split(",", 1)]
+        gene_input, disease_name = [x.strip() for x in input_str.split(",", 1)]
     except ValueError:
-        return "Please provide input in format: 'gene_id, disease_name'"
+        return "Please provide input in format: 'gene, disease_name'"
+
+    # Convert gene symbol to ID if needed
+    gene_id = gene_input
+    gene_symbol = gene_input
+
+    if not gene_input.startswith("hsa:"):
+        gene_id = convert_symbol_to_id(gene_input)
+        if gene_id == gene_input and not gene_input.startswith("hsa:"):
+            return f"Could not find gene ID for symbol {gene_input}."
+    else:
+        gene_symbol = convert_id_to_symbol(gene_input)
 
     # Check gene-disease association
     diseases = get_diseases_by_gene(gene_id)
     if disease_name.lower() not in diseases.lower():
-        return f"Gene {gene_id} is not directly associated with {disease_name} in pathway data."
+        return f"Gene {gene_symbol} (ID: {gene_id}) is not directly associated with {disease_name} in pathway data."
 
     # Get GO terms
-    go_terms = get_gene_go_terms(gene_id)
+    go_terms = get_gene_go_terms(gene_symbol)
     if "not found" in go_terms:
         return go_terms
 
     # Generate hypothesis
     return (
-        f"Hypothesis for {gene_id} in {disease_name}:\n"
+        f"Hypothesis for {gene_symbol} (ID: {gene_id}) in {disease_name}:\n"
         f"1. Pathway data confirms association\n"
         f"2. Gene's GO terms suggest potential mechanisms: {go_terms}\n"
-        f"3. Potential roles: Based on its annotations, {gene_id} might contribute to {disease_name} "
+        f"3. Potential roles: Based on its annotations, {gene_symbol} might contribute to {disease_name} "
         "through these biological processes or molecular functions."
     )
 
@@ -142,20 +187,34 @@ def find_shared_mechanisms(genes_input: str) -> dict:
     """Find shared GO terms between two genes that might indicate common mechanisms
 
     Args:
-        genes_input (str): Input string containing two gene symbols separated by a comma
-        (e.g., "SOX9, TP53")
+        genes_input (str): Input string containing two gene symbols or IDs separated by a comma
+        (e.g., "SOX9, TP53" or "hsa:6662, hsa:7157")
 
     Returns:
         dict: A dictionary containing the two genes, their shared GO terms, and the count of shared terms
     """
-    genes = genes_input.split(",")
+    genes = [g.strip() for g in genes_input.split(",")]
     if len(genes) != 2:
         return {
-            "error": "Please provide exactly two gene symbols, separated by a comma."
+            "error": "Please provide exactly two gene symbols/IDs, separated by a comma."
         }
-    gene1, gene2 = genes[0].strip(), genes[1].strip()
-    if gene1 not in G or gene2 not in G:
-        return {"error": "One or both genes not found in graph"}
+
+    gene_symbols = []
+    for gene in genes:
+        if gene.startswith("hsa:"):
+            symbol = convert_id_to_symbol(gene)
+            if symbol is None:
+                return {"error": f"Gene ID {gene} not found in mapping."}
+            gene_symbols.append(symbol)
+        else:
+            gene_symbols.append(gene)
+
+    gene1, gene2 = gene_symbols[0], gene_symbols[1]
+
+    if gene1 not in G.nodes():
+        return {"error": f"Gene {gene1} not found in graph"}
+    if gene2 not in G.nodes():
+        return {"error": f"Gene {gene2} not found in graph"}
 
     # Get GO terms for both genes
     go1 = set(n for n in G.neighbors(gene1) if G.nodes[n].get("type") == "go_term")
@@ -167,10 +226,17 @@ def find_shared_mechanisms(genes_input: str) -> dict:
 
 
 @tool
-def find_downstream_genes(gene_id: str) -> dict:
+def find_downstream_genes(gene_input: str) -> dict:
     """Identify genes likely to be downstream in pathways.
-    Input: gene_id (e.g., 'hsa:6662')
-    Output: {'target': gene_id, 'downstream': [gene1, gene2...]}"""
+    Input: gene ID or symbol (e.g., 'hsa:6662' or 'SOX9')
+    Output: {'target': gene_input, 'downstream': [gene1, gene2...]}"""
+
+    # Convert gene symbol to ID if needed
+    gene_id = gene_input
+    if not gene_input.startswith("hsa:"):
+        gene_id = convert_symbol_to_id(gene_input)
+        if gene_id == gene_input and not gene_input.startswith("hsa:"):
+            return {"error": f"Could not find gene ID for symbol {gene_input}."}
 
     # 1. Find all pathways containing the gene
     pathways = gene_pathway_df[gene_pathway_df["gene_id"] == gene_id][
@@ -178,7 +244,7 @@ def find_downstream_genes(gene_id: str) -> dict:
     ].unique()
 
     # 2. Get all other genes in these pathways
-    downstream = []
+    downstream_ids = []
     for pathway in pathways:
         pathway_genes = gene_pathway_df[gene_pathway_df["pathway"] == pathway][
             "gene_id"
@@ -186,25 +252,43 @@ def find_downstream_genes(gene_id: str) -> dict:
         # Simple heuristic: genes appearing after our target in pathway data
         if gene_id in pathway_genes:
             idx = pathway_genes.index(gene_id)
-            downstream.extend(pathway_genes[idx + 1 :])  # Genes after our target
+            downstream_ids.extend(pathway_genes[idx + 1 :])  # Genes after our target
+
+    # Convert IDs to symbols
+    downstream_symbols = [convert_id_to_symbol(g_id) for g_id in downstream_ids]
+    downstream_symbols = [s for s in downstream_symbols if s is not None]
 
     return {
-        "target": gene_id,
-        "downstream": list(set(downstream)),  # Remove duplicates
+        "target": gene_input,
+        "downstream": list(set(downstream_symbols)),  # Remove duplicates
         "pathways": list(pathways),
     }
 
 
 @tool
-def analyze_downstream_effects(gene_id: str) -> str:
+def analyze_downstream_effects(gene_input: str) -> str:
     """Predict functional effects on downstream genes using GO term analysis.
-    Input: gene_id (e.g., 'hsa:6662')
+    Input: gene ID or symbol (e.g., 'hsa:6662' or 'SOX9')
     Output: Analysis report"""
+
+    # Convert gene symbol to ID if needed
+    gene_id = gene_input
+    gene_symbol = gene_input
+
+    if not gene_input.startswith("hsa:"):
+        gene_id = convert_symbol_to_id(gene_input)
+        if gene_id == gene_input and not gene_input.startswith("hsa:"):
+            return f"Could not find gene ID for symbol {gene_input}."
+    else:
+        gene_symbol = convert_id_to_symbol(gene_id)
 
     # 1. Find downstream genes
     downstream_data = find_downstream_genes(gene_id)
+    if "error" in downstream_data:
+        return downstream_data["error"]
+
     if not downstream_data["downstream"]:
-        return f"No downstream genes found for {gene_id} in pathway data."
+        return f"No downstream genes found for {gene_symbol} (ID: {gene_id}) in pathway data."
 
     # 2. Analyze pathway context
     pathway_counts = {}
@@ -215,7 +299,7 @@ def analyze_downstream_effects(gene_id: str) -> str:
 
     # 3. Generate report
     report = [
-        f"Downstream analysis for {gene_id}:",
+        f"Downstream analysis for {gene_symbol} (ID: {gene_id}):",
         f"- Found in {len(downstream_data['pathways'])} pathways",
         f"- Potentially affects {len(downstream_data['downstream'])} downstream genes",
         "\nPathway context:",
@@ -254,51 +338,71 @@ def get_pathway_info(pathway_name: str) -> str:
         pathway_name = best_match
 
     # Get genes in pathway
-    pathway_genes = gene_pathway_df[gene_pathway_df["pathway"] == pathway_name][
+    pathway_gene_ids = gene_pathway_df[gene_pathway_df["pathway"] == pathway_name][
         "gene_id"
     ].tolist()
 
+    # Convert gene IDs to symbols
+    pathway_gene_symbols = [
+        convert_id_to_symbol(gene_id) for gene_id in pathway_gene_ids
+    ]
+    pathway_gene_symbols = [s for s in pathway_gene_symbols if s is not None]
+
     report = [
         f"Pathway: {pathway_name}",
-        f"Total genes: {len(set(pathway_genes))}",
+        f"Total genes: {len(set(pathway_gene_ids))}",
         "\nGenes (in pathway order):",
     ]
 
-    # Show first 10 genes to keep report concise
-    for gene in pathway_genes[:10]:
-        report.append(f"- {gene}")
+    # Show gene IDs and symbols
+    for i, (gene_id, gene_symbol) in enumerate(
+        zip(pathway_gene_ids[:10], pathway_gene_symbols[:10])
+    ):
+        report.append(f"- {gene_symbol} ({gene_id})")
 
-    if len(pathway_genes) > 10:
-        report.append(f"... and {len(pathway_genes) - 10} more genes")
+    if len(pathway_gene_ids) > 10:
+        report.append(f"... and {len(pathway_gene_ids) - 10} more genes")
 
     return "\n".join(report)
 
 
 @tool
-def find_connecting_pathways(gene_ids: str) -> str:
+def find_connecting_pathways(gene_inputs: str) -> str:
     """Find pathways that connect two or more genes.
-    Input: comma-separated gene IDs (e.g., 'hsa:6662, hsa:7124')
+    Input: comma-separated gene IDs or symbols (e.g., 'hsa:6662, hsa:7124' or 'SOX9, TP53')
     Output: List of shared pathways"""
 
-    gene_list = [g.strip() for g in gene_ids.split(",")]
+    gene_list = [g.strip() for g in gene_inputs.split(",")]
+    gene_id_list = []
+
+    # Convert symbols to IDs if needed
+    for gene in gene_list:
+        if gene.startswith("hsa:"):
+            gene_id_list.append(gene)
+        else:
+            gene_id = convert_symbol_to_id(gene)
+            if gene_id == gene:
+                return f"Gene symbol '{gene}' not found in mapping."
+            gene_id_list.append(gene_id)
 
     # Validate gene IDs
-    for gene in gene_list:
-        if gene not in gene_pathway_df["gene_id"].values:
-            return f"Gene ID '{gene}' not found in pathway data."
+    for gene_id in gene_id_list:
+        if gene_id not in gene_pathway_df["gene_id"].values:
+            return f"Gene ID '{gene_id}' not found in pathway data."
 
     # Find pathways for each gene
     gene_pathways = {}
-    for gene in gene_list:
-        gene_pathways[gene] = set(
-            gene_pathway_df[gene_pathway_df["gene_id"] == gene]["pathway"]
+    for gene_id in gene_id_list:
+        gene_pathways[gene_id] = set(
+            gene_pathway_df[gene_pathway_df["gene_id"] == gene_id]["pathway"]
         )
 
     # Find shared pathways
     shared_pathways = set.intersection(*gene_pathways.values())
 
     if not shared_pathways:
-        return f"No shared pathways found connecting the genes: {', '.join(gene_list)}"
+        original_genes_str = ", ".join(gene_list)
+        return f"No shared pathways found connecting the genes: {original_genes_str}"
 
     # Generate report
     report = [
@@ -312,10 +416,11 @@ def find_connecting_pathways(gene_ids: str) -> str:
             "gene_id"
         ].tolist()
         positions = []
-        for gene in gene_list:
-            if gene in pathway_genes:
-                pos = pathway_genes.index(gene) + 1  # 1-based indexing
-                positions.append(f"{gene} (pos {pos})")
+        for i, gene_id in enumerate(gene_id_list):
+            if gene_id in pathway_genes:
+                pos = pathway_genes.index(gene_id) + 1  # 1-based indexing
+                gene_symbol = convert_id_to_symbol(gene_id)
+                positions.append(f"{gene_symbol} ({gene_id}, pos {pos})")
 
         report.append(f"- {pathway}: {', '.join(positions)}")
 
@@ -332,16 +437,36 @@ def analyze_multi_gene_impact(genes_input: str) -> str:
     Returns:
         str: A report summarizing shared biological processes and potential combined disease relevance.
     """
-    genes = [g.strip() for g in genes_input.split(",")]
+    input_genes = [g.strip() for g in genes_input.split(",")]
 
-    # Validate genes
-    missing_genes = [g for g in genes if g not in G.nodes]
+    # Process gene inputs - convert to symbols for GO terms, IDs for pathway analysis
+    gene_symbols = []
+    gene_ids = []
+
+    for gene in input_genes:
+        if gene.startswith("hsa:"):
+            # It's an ID, convert to symbol for graph analysis
+            symbol = convert_id_to_symbol(gene)
+            if symbol is None:
+                return f"Gene ID {gene} not found in mapping."
+            gene_symbols.append(symbol)
+            gene_ids.append(gene)
+        else:
+            # It's a symbol, convert to ID for pathway analysis
+            gene_symbols.append(gene)
+            gene_id = convert_symbol_to_id(gene)
+            if gene_id == gene and not gene.startswith("hsa:"):
+                return f"Gene symbol {gene} not found in mapping."
+            gene_ids.append(gene_id)
+
+    # Validate genes in graph
+    missing_genes = [g for g in gene_symbols if g not in G.nodes]
     if missing_genes:
-        return f"These genes were not found: {', '.join(missing_genes)}"
+        return f"These genes were not found in the graph: {', '.join(missing_genes)}"
 
     # Collect GO terms for all genes
     all_go_terms = []
-    for gene in genes:
+    for gene in gene_symbols:
         go_terms = [n for n in G.neighbors(gene) if G.nodes[n].get("type") == "go_term"]
         all_go_terms.append(set(go_terms))
 
@@ -350,16 +475,18 @@ def analyze_multi_gene_impact(genes_input: str) -> str:
 
     # Collect disease associations
     disease_sets = []
-    for gene in genes:
-        diseases = gene_pathway_df[
-            gene_pathway_df["gene_id"].str.lower() == gene.lower()
-        ]["pathway"].tolist()
+    for gene_id in gene_ids:
+        diseases = gene_pathway_df[gene_pathway_df["gene_id"] == gene_id][
+            "pathway"
+        ].tolist()
         disease_sets.append(set(diseases))
 
     shared_diseases = set.intersection(*disease_sets) if disease_sets else set()
 
     # Generate summary
-    report = [f"Multi-Gene Analysis for: {', '.join(genes)}\n"]
+    report = [
+        f"Multi-Gene Analysis for: {', '.join(gene_symbols)} ({', '.join(gene_ids)})\n"
+    ]
 
     if shared_go_terms:
         report.append(
@@ -396,7 +523,7 @@ tools = [
     Tool(
         name="GetDiseasesByGene",
         func=get_diseases_by_gene,
-        description="Finds diseases associated with a gene. Input: gene ID (e.g., 'hsa:1234')",
+        description="Finds diseases associated with a gene. Input: gene ID (e.g., 'hsa:1234') or gene symbol (e.g., 'APOE')",
     ),
     Tool(
         name="GetGenesByDisease",
@@ -411,22 +538,22 @@ tools = [
     Tool(
         name="FindSharedMechanisms",
         func=find_shared_mechanisms,
-        description="Find shared GO terms between two genes that might indicate common mechanisms. Input: two gene symbols (e.g., 'APOE, TP53'). Returns shared GO terms and their count.",
+        description="Find shared GO terms between two genes. Input: two gene symbols or IDs (e.g., 'APOE, TP53' or 'hsa:348, hsa:7157'). Returns shared GO terms and their count.",
     ),
     Tool(
         name="GenerateHypothesis",
         func=generate_hypothesis,
-        description="Generates a hypothesis about gene-disease mechanisms. Input: gene ID and disease name",
+        description="Generates a hypothesis about gene-disease mechanisms. Input: gene ID or symbol and disease name (e.g., 'APOE, Alzheimer disease')",
     ),
     Tool(
         name="FindDownstreamGenes",
         func=find_downstream_genes,
-        description="Identifies genes likely to be downstream in pathways. Input: gene ID (e.g., 'hsa:6662'). Returns target gene and downstream genes.",
+        description="Identifies genes likely to be downstream in pathways. Input: gene ID or symbol (e.g., 'hsa:6662' or 'SOX9'). Returns target gene and downstream genes.",
     ),
     Tool(
         name="AnalyzeDownstreamEffects",
         func=analyze_downstream_effects,
-        description="Predicts functional effects on downstream genes based on pathway topology. Input: gene ID (e.g., 'hsa:6662'). Output: Analysis report",
+        description="Predicts functional effects on downstream genes based on pathway topology. Input: gene ID or symbol (e.g., 'hsa:6662' or 'SOX9'). Output: Analysis report",
     ),
     Tool(
         name="GetPathwayInfo",
@@ -436,7 +563,7 @@ tools = [
     Tool(
         name="FindConnectingPathways",
         func=find_connecting_pathways,
-        description="Find pathways that connect two or more genes. Input: comma-separated gene IDs (e.g., 'hsa:6662, hsa:7124')",
+        description="Find pathways that connect two or more genes. Input: comma-separated gene IDs or symbols (e.g., 'hsa:6662, hsa:7124' or 'SOX9, TP53')",
     ),
     Tool(
         name="AnalyzeMultiGeneImpact",
@@ -465,7 +592,7 @@ prompt = """You are a biomedical research assistant focused on concise functiona
         - Suggest a potential mechanism in 1 sentence, combining pathway position + function.
 
         Answering style:
-        - Be brief. No meed for long explanations.
+        - Be brief. No need for long explanations.
         - Focus on the main biological idea.
         - Flag uncertainties clearly but without long elaborations.
 
@@ -501,6 +628,7 @@ query = "How might SIRT1 influence other genes in Alzheimer?"
 # query = "Predict TP53's downstream effects in colorectal cancer"
 query = "Analyze the shared biological processes between TP53 and BRCA1."
 query = "Suggest possible combined effects of APOE and MAPT on Alzheimer's disease."
+query = "Find pathways connecting the genes hsa:1956, hsa:7157, and hsa:7124."
 
 response = agent_executor.invoke({"input": query})
 print(response["output"])
