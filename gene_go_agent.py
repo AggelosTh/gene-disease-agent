@@ -6,9 +6,11 @@ from langchain.tools import tool
 from langchain_openai import ChatOpenAI
 
 # Load graph
+print("Loading graph...")
 G = nx.read_graphml("gene_go_network.graphml")
 
 # Load gene-pathway links
+print("Loading gene-pathway links...")
 gene_pathway_df = pd.read_csv("data/gene_pathway_links.csv")
 
 
@@ -35,6 +37,8 @@ def get_genes_by_disease(disease_name: str) -> str:
     gene_list = matches["gene_id"].unique().tolist()
     if not gene_list:
         return f"No genes found for the disease: {disease_name}"
+    if len(gene_list) > 10:
+        return f"Genes involved in {disease_name}: {', '.join(gene_list[:10])}... and {len(gene_list) - 10} more genes"
     return f"Genes involved in {disease_name}: {', '.join(gene_list)}"
 
 
@@ -370,45 +374,33 @@ tools = [
 
 llm = ChatOpenAI(model="gpt-4o", temperature=0)
 
-prompt = """You are an advanced biomedical research assistant specialized in gene-pathway-disease relationships. Follow this analytical framework:
+prompt = """You are a biomedical research assistant focused on concise functional analysis of gene-disease relationships. Follow this framework:
 
-        1. **Gene-Disease Validation**
-        - First confirm associations using pathway data (KEGG)
-        - Distinguish between gene IDs (e.g., 'hsa:6662') and gene symbols (e.g., 'TP53')
-        - Example: "Is gene X linked to disease Y in known pathways?"
+        1. Gene-Disease Validation
+        - Confirm gene association with diseases via pathway data (KEGG).
+        - Clearly distinguish between gene IDs (e.g., 'hsa:6662') and gene symbols (e.g., 'TP53').
 
-        2. **Functional Profiling**
-        - For gene symbols: Analyze GO terms from the knowledge graph
-        - For gene IDs: Focus on pathway relationships and topology
-        - Identify key biological processes/molecular functions
+        2. Functional Profiling
+        - For gene symbols: Summarize main biological processes (GO terms) in 1-2 sentences.
+        - For gene IDs: Summarize pathway involvement, focusing on key roles.
 
-        3. **Downstream Analysis Protocol**:
-        a) For gene IDs (hsa:XXXX): Identify downstream genes based on pathway order
-        b) Analyze pathway context and complexity
-        c) Consider relative positions within pathways
-        d) Look for connecting pathways between multiple genes
-        e) Examine pathway topology for potential regulatory relationships
+        3. Downstream Insights
+        - Briefly mention if the gene has known upstream or downstream relationships in pathways.
+        - If uncertain, state "No direct evidence found."
 
-        4. **Mechanistic Hypothesis Generation**
-        - Combine pathway position + functional analysis
-        - Propose testable biological mechanisms
-        - Example: "Gene X likely influences disease Y through [pathway Z] by affecting [downstream genes]"
+        4. Hypothesis Generation
+        - Suggest a potential mechanism in 1 sentence, combining pathway position + function.
 
-        Special Capabilities:
-        - Leverage both GO annotations (for gene symbols) AND pathway topology (for gene IDs)
-        - Distinguish between upstream regulators and downstream effectors in pathways
-        - Identify shared pathways that connect multiple genes of interest
+        Answering style:
+        - Be brief. No meed for long explanations.
+        - Focus on the main biological idea.
+        - Flag uncertainties clearly but without long elaborations.
 
-        Guidelines:
-        - Be precise with identifiers - specify whether using gene IDs (hsa:XXXX) or gene symbols
-        - For gene IDs, use pathway-based downstream analysis tools
-        - For gene symbols, use GO term-based functional analysis
-        - When analyzing gene relationships, consider:
-        * Pathway context and gene order
-        * Disease associations
-        * Potential regulatory mechanisms
-        - Flag uncertain predictions as "hypothetical"
+        Special Skills:
+        - Use both GO terms and pathway topology depending on the identifier type.
+        - Prioritize clarity and brevity over exhaustive detail.
         """
+
 
 agent_executor = initialize_agent(
     tools=tools,
@@ -431,7 +423,9 @@ query = "What diseases might APOE be associated with?"
 # query = "What type II diabetes genes are associated with the GO term GO:0005975 (carbohydrate metabolic process)?"
 # query = "How might TP53 affect downstream genes in cancer?"
 # query = "How might SOX9 influence other genes in chondrogenesis?"
-query = "How might SIRT1 influence other genes in chondrogenesis?"
+query = "How might SIRT1 influence other genes in Alzheimer?"
+# query = "What diseases might SIRT1 be associated with?"
+# query = "Predict TP53's downstream effects in colorectal cancer"
 
 response = agent_executor.invoke({"input": query})
 print(response["output"])
