@@ -37,9 +37,7 @@ def get_genes_by_disease(disease_name: str) -> str:
     gene_list = matches["gene_id"].unique().tolist()
     if not gene_list:
         return f"No genes found for the disease: {disease_name}"
-    if len(gene_list) > 10:
-        return f"Genes involved in {disease_name}: {', '.join(gene_list[:10])}... and {len(gene_list) - 10} more genes"
-    return f"Genes involved in {disease_name}: {', '.join(gene_list)}"
+    return f"Genes involved in {disease_name}: {', '.join(gene_list[:10])}{'... and ' + str(len(gene_list) - 10) + ' more genes' if len(gene_list) > 10 else ''}"
 
 
 @tool
@@ -324,6 +322,76 @@ def find_connecting_pathways(gene_ids: str) -> str:
     return "\n".join(report)
 
 
+@tool
+def analyze_multi_gene_impact(genes_input: str) -> str:
+    """Analyze the combined biological processes and disease associations of multiple genes.
+
+    Args:
+        genes_input (str): Comma-separated list of gene IDs or symbols.
+
+    Returns:
+        str: A report summarizing shared biological processes and potential combined disease relevance.
+    """
+    genes = [g.strip() for g in genes_input.split(",")]
+
+    # Validate genes
+    missing_genes = [g for g in genes if g not in G.nodes]
+    if missing_genes:
+        return f"These genes were not found: {', '.join(missing_genes)}"
+
+    # Collect GO terms for all genes
+    all_go_terms = []
+    for gene in genes:
+        go_terms = [n for n in G.neighbors(gene) if G.nodes[n].get("type") == "go_term"]
+        all_go_terms.append(set(go_terms))
+
+    # Find shared GO terms
+    shared_go_terms = set.intersection(*all_go_terms) if all_go_terms else set()
+
+    # Collect disease associations
+    disease_sets = []
+    for gene in genes:
+        diseases = gene_pathway_df[
+            gene_pathway_df["gene_id"].str.lower() == gene.lower()
+        ]["pathway"].tolist()
+        disease_sets.append(set(diseases))
+
+    shared_diseases = set.intersection(*disease_sets) if disease_sets else set()
+
+    # Generate summary
+    report = [f"Multi-Gene Analysis for: {', '.join(genes)}\n"]
+
+    if shared_go_terms:
+        report.append(
+            f"- Shared GO terms ({len(shared_go_terms)}): {', '.join(list(shared_go_terms)[:5])}"
+            + (
+                f", ... and {len(shared_go_terms) - 5} more"
+                if len(shared_go_terms) > 5
+                else ""
+            )
+        )
+    else:
+        report.append("- No shared GO terms found.")
+
+    if shared_diseases:
+        report.append(
+            f"- Shared disease pathways ({len(shared_diseases)}): {', '.join(list(shared_diseases)[:3])}"
+            + (
+                f", ... and {len(shared_diseases) - 3} more"
+                if len(shared_diseases) > 3
+                else ""
+            )
+        )
+    else:
+        report.append("- No shared disease pathways found.")
+
+    report.append(
+        "\nInterpretation: The shared GO terms and diseases suggest potential combined roles in overlapping biological processes or disease mechanisms."
+    )
+
+    return "\n".join(report)
+
+
 tools = [
     Tool(
         name="GetDiseasesByGene",
@@ -369,6 +437,11 @@ tools = [
         name="FindConnectingPathways",
         func=find_connecting_pathways,
         description="Find pathways that connect two or more genes. Input: comma-separated gene IDs (e.g., 'hsa:6662, hsa:7124')",
+    ),
+    Tool(
+        name="AnalyzeMultiGeneImpact",
+        func=analyze_multi_gene_impact,
+        description="Analyzes the combined biological processes and disease associations of multiple genes. Input: comma-separated gene symbols or IDs.",
     ),
 ]
 
@@ -426,6 +499,8 @@ query = "What diseases might APOE be associated with?"
 query = "How might SIRT1 influence other genes in Alzheimer?"
 # query = "What diseases might SIRT1 be associated with?"
 # query = "Predict TP53's downstream effects in colorectal cancer"
+query = "Analyze the shared biological processes between TP53 and BRCA1."
+query = "Suggest possible combined effects of APOE and MAPT on Alzheimer's disease."
 
 response = agent_executor.invoke({"input": query})
 print(response["output"])
