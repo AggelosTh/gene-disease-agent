@@ -1,3 +1,5 @@
+"""Config file"""
+
 import os
 import pathlib
 

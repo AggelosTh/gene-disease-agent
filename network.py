@@ -1,3 +1,5 @@
+"""Build and visualize a Gene Ontology network from GOA data."""
+
 import matplotlib.pyplot as plt
 import networkx as nx
 import pandas as pd
@@ -122,7 +124,3 @@ def visualize_subgraph(G: nx.Graph, max_nodes: int = 100):
     plt.tight_layout()
     plt.savefig("gene_go_network.png", dpi=300)
     plt.show()
-
-
-G = load_graphml_graph("gene_go_network.graphml")
-visualize_subgraph(G)

@@ -1,3 +1,5 @@
+"""Development of a LangChain agent for gene-GO analysis using KEGG pathways."""
+
 import pickle
 from argparse import ArgumentParser
 
@@ -611,7 +613,7 @@ tools = [
     Tool(
         name="AnalyzeDownstreamEffects",
         func=analyze_downstream_effects,
-        description="Predicts functional effects on downstream genes based on pathway topology. Input: gene ID or symbol (e.g., 'hsa:6662' or 'SOX9'). Output: Analysis report",
+        description="Predicts functional effects on downstream genes based on pathway topology. Input: gene ID or symbol (e.g., 'hsa:6662' or 'SOX9').",
     ),
     Tool(
         name="GetPathwayInfo",

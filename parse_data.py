@@ -1,3 +1,5 @@
+"""Parse KGML and GAF files to extract gene-pathway and gene-GO term links."""
+
 import os
 import pickle
 import time
@@ -28,16 +30,20 @@ def fetch_gene_id_to_symbol_mapping(gene_ids: list, sleep_time: float = 0.5) -> 
     """Fetch gene symbols for a list of gene IDs."""
     gene_id_to_symbol = {}
     for gene_id in gene_ids:
-        if gene_id not in gene_id_to_symbol:  # avoid duplicate requests
+        if gene_id not in gene_id_to_symbol:
             symbol = get_gene_symbol(gene_id)
             if symbol:
                 gene_id_to_symbol[gene_id] = symbol
-            time.sleep(sleep_time)  # be polite to KEGG servers
+            time.sleep(sleep_time)  # Avoid hitting the API too hard
     return gene_id_to_symbol
 
 
 def parse_kgml_file(file_path: str) -> list:
-    """Parse a KGML file and extract gene-pathway links."""
+    """Parse a KGML file and extract gene-pathway links.
+    Args:
+        file_path (str): Path to the KGML file.
+    Returns:
+        list: A list of dictionaries containing gene-pathway links."""
     tree = ET.parse(file_path)
     root = tree.getroot()
 
@@ -61,7 +67,13 @@ def parse_kgml_file(file_path: str) -> list:
 
 
 def parse_kgml_directory(directory_path: str) -> list:
-    """Parse all KGML files in a directory and extract gene-pathway links."""
+    """Parse all KGML files in a directory and extract gene-pathway links.
+    Args:
+        directory_path (str): Path to the directory containing KGML files.
+    Returns:
+        list: A list of dictionaries containing gene-pathway links."""
+    if not os.path.exists(directory_path):
+        raise FileNotFoundError(f"Directory {directory_path} does not exist.")
     all_links = []
     directory = Path(directory_path)
 
@@ -79,7 +91,11 @@ def save_to_csv(links: list, output_path: str):
 
 
 def parse_gaf_file(file_path: str) -> pd.DataFrame:
-    """Parse a GAF file and extract gene-GO term links."""
+    """Parse a GAF file and extract gene-GO term links.
+    Args:
+        file_path (str): Path to the GAF file.
+    Returns:
+        pd.DataFrame: A DataFrame containing gene-GO term links."""
     # Read the GAF file, skipping comments and using tab as the separator
     df = pd.read_csv(file_path, sep="\t", comment="!", header=None, low_memory=False)
     df = df[[2, 4]]  # Column 2: gene symbol, Column 5: GO term
