@@ -1,4 +1,5 @@
 import pickle
+from argparse import ArgumentParser
 
 import networkx as nx
 import pandas as pd
@@ -7,17 +8,63 @@ from langchain.agents import AgentType, Tool, initialize_agent
 from langchain.tools import tool
 from langchain_openai import ChatOpenAI
 
+# Set up command line argument parsing
+parser = ArgumentParser(description="Gene-GO Agent")
+
+parser.add_argument(
+    "--temperature",
+    type=float,
+    default=0.0,
+    help="Temperature for the language model",
+)
+parser.add_argument(
+    "--verbose",
+    type=bool,
+    default=True,
+    help="Enable verbose output",
+)
+parser.add_argument(
+    "--max_iterations",
+    type=int,
+    default=5,
+    help="Maximum number of iterations for the agent (default: 5)",
+)
+parser.add_argument(
+    "--graphml_file",
+    type=str,
+    default="gene_go_network.graphml",
+    help="Path to the GraphML file containing the gene-GO network",
+)
+parser.add_argument(
+    "--gene_pathway_file",
+    type=str,
+    default="data/gene_pathway_links.csv",
+    help="Path to the CSV file containing gene-pathway links",
+)
+parser.add_argument(
+    "--gene_id_to_symbol_file",
+    type=str,
+    default="data/gene_id_to_symbol.pkl",
+    help="Path to the pickle file containing gene ID to symbol mapping",
+)
+parser.add_argument(
+    "--query",
+    type=str,
+    help="Query to run the agent",
+)
+args = parser.parse_args()
+
 # Load graph
 print("Loading graph...")
-G = nx.read_graphml("gene_go_network.graphml")
+G = nx.read_graphml(args.graphml_file)
 
 # Load gene-pathway links
 print("Loading gene-pathway links...")
-gene_pathway_df = pd.read_csv("data/gene_pathway_links.csv")
+gene_pathway_df = pd.read_csv(args.gene_pathway_file)
 
 # Load gene ID to symbol mapping
 print("Loading gene ID to symbol mapping...")
-with open("data/gene_id_to_symbol.pkl", "rb") as f:
+with open(args.gene_id_to_symbol_file, "rb") as f:
     gene_id_to_symbol = pickle.load(f)
 
 # Create reverse mapping
@@ -151,7 +198,6 @@ def generate_hypothesis(input_str: str) -> str:
     except ValueError:
         return "Please provide input in format: 'gene, disease_name'"
 
-    # Convert gene symbol to ID if needed
     gene_id = gene_input
     gene_symbol = gene_input
 
@@ -227,9 +273,12 @@ def find_shared_mechanisms(genes_input: str) -> dict:
 
 @tool
 def find_downstream_genes(gene_input: str) -> dict:
-    """Identify genes likely to be downstream in pathways.
-    Input: gene ID or symbol (e.g., 'hsa:6662' or 'SOX9')
-    Output: {'target': gene_input, 'downstream': [gene1, gene2...]}"""
+    """Find genes likely to be downstream in pathways based on the input gene.
+    Args:
+        gene_input (str): Gene ID or symbol (e.g., 'hsa:6662' or 'SOX9')
+    Returns:
+        dict: A dictionary containing the target gene, downstream genes, and pathways
+    """
 
     # Convert gene symbol to ID if needed
     gene_id = gene_input
@@ -252,7 +301,7 @@ def find_downstream_genes(gene_input: str) -> dict:
         # Simple heuristic: genes appearing after our target in pathway data
         if gene_id in pathway_genes:
             idx = pathway_genes.index(gene_id)
-            downstream_ids.extend(pathway_genes[idx + 1 :])  # Genes after our target
+            downstream_ids.extend(pathway_genes[idx + 1 :])  # Genes after the target
 
     # Convert IDs to symbols
     downstream_symbols = [convert_id_to_symbol(g_id) for g_id in downstream_ids]
@@ -260,16 +309,19 @@ def find_downstream_genes(gene_input: str) -> dict:
 
     return {
         "target": gene_input,
-        "downstream": list(set(downstream_symbols)),  # Remove duplicates
+        "downstream": list(set(downstream_symbols)),
         "pathways": list(pathways),
     }
 
 
 @tool
 def analyze_downstream_effects(gene_input: str) -> str:
-    """Predict functional effects on downstream genes using GO term analysis.
-    Input: gene ID or symbol (e.g., 'hsa:6662' or 'SOX9')
-    Output: Analysis report"""
+    """Predict functional effects on downstream genes based on pathway topology.
+    Args:
+        gene_input (str): Gene ID or symbol (e.g., 'hsa:6662' or 'SOX9')
+    Returns:
+        str: Analysis report summarizing the downstream effects
+    """
 
     # Convert gene symbol to ID if needed
     gene_id = gene_input
@@ -322,9 +374,12 @@ def analyze_downstream_effects(gene_input: str) -> str:
 
 @tool
 def get_pathway_info(pathway_name: str) -> str:
-    """Get detailed information about a pathway.
-    Input: pathway name (e.g., 'Alzheimer disease')
-    Output: Details about genes in the pathway"""
+    """Get detailed information about a specific pathway.
+    Args:
+        pathway_name (str): The name of the pathway (e.g., 'Alzheimer disease')
+    Returns:
+        str: A report summarizing the pathway and its associated genes
+    """
 
     # Check if pathway exists
     if pathway_name not in gene_pathway_df["pathway"].values:
@@ -369,8 +424,11 @@ def get_pathway_info(pathway_name: str) -> str:
 @tool
 def find_connecting_pathways(gene_inputs: str) -> str:
     """Find pathways that connect two or more genes.
-    Input: comma-separated gene IDs or symbols (e.g., 'hsa:6662, hsa:7124' or 'SOX9, TP53')
-    Output: List of shared pathways"""
+    Args:
+        gene_inputs (str): Comma-separated list of gene IDs or symbols (e.g., 'hsa:6662, hsa:7124' or 'SOX9, TP53')
+    Returns:
+        str: A report summarizing the connecting pathways and their associated genes
+    """
 
     gene_list = [g.strip() for g in gene_inputs.split(",")]
     gene_id_list = []
@@ -572,8 +630,6 @@ tools = [
     ),
 ]
 
-llm = ChatOpenAI(model="gpt-4o", temperature=0)
-
 prompt = """You are a biomedical research assistant focused on concise functional analysis of gene-disease relationships. Follow this framework:
 
         1. Gene-Disease Validation
@@ -601,34 +657,24 @@ prompt = """You are a biomedical research assistant focused on concise functiona
         - Prioritize clarity and brevity over exhaustive detail.
         """
 
+if __name__ == "__main__":
 
-agent_executor = initialize_agent(
-    tools=tools,
-    llm=llm,
-    agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
-    verbose=True,
-    handle_parsing_errors=True,
-    max_iterations=5,
-    early_stopping_method="generate",
-    agent_kwargs={"prefix": prompt},
-)
+    llm = ChatOpenAI(model="gpt-4o", temperature=args.temperature)
 
-query = "What diseases might APOE be associated with?"
-# query = "Which genes are involved in Alzheimer disease?"
-# query = "Which genes are involved in Parkinson's disease?"
-# query = "What diseases is the gene hsa:4535 (APP) involved in?"
-# query = "How might SOX9 be involved in Colorectal cancer?"
-# query = "Which genes are related to type II diabetes mellitus?"
-# query = "Which genes are related to type II diabetes?"
-# query = "What type II diabetes genes are associated with the GO term GO:0005975 (carbohydrate metabolic process)?"
-# query = "How might TP53 affect downstream genes in cancer?"
-# query = "How might SOX9 influence other genes in chondrogenesis?"
-query = "How might SIRT1 influence other genes in Alzheimer?"
-# query = "What diseases might SIRT1 be associated with?"
-# query = "Predict TP53's downstream effects in colorectal cancer"
-query = "Analyze the shared biological processes between TP53 and BRCA1."
-query = "Suggest possible combined effects of APOE and MAPT on Alzheimer's disease."
-query = "Find pathways connecting the genes hsa:1956, hsa:7157, and hsa:7124."
+    agent_executor = initialize_agent(
+        tools=tools,
+        llm=llm,
+        agent=AgentType.STRUCTURED_CHAT_ZERO_SHOT_REACT_DESCRIPTION,
+        verbose=args.verbose,
+        handle_parsing_errors=True,
+        max_iterations=args.max_iterations,
+        early_stopping_method="genrate",
+        agent_kwargs={"prefix": prompt},
+    )
+    if not args.query:
+        print("Please provide a query using the --query argument.")
+        exit(1)
 
-response = agent_executor.invoke({"input": query})
-print(response["output"])
+    print("Running agent...")
+    response = agent_executor.invoke({"input": args.query})
+    print(response["output"])
