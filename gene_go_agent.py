@@ -668,7 +668,7 @@ if __name__ == "__main__":
         verbose=args.verbose,
         handle_parsing_errors=True,
         max_iterations=args.max_iterations,
-        early_stopping_method="genrate",
+        early_stopping_method="generate",
         agent_kwargs={"prefix": prompt},
     )
     if not args.query:
