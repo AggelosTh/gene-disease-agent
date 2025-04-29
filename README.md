@@ -30,23 +30,23 @@ The system enables users to:
 
 ## Setup Instructions
 
-### 1. Clone the repository
+#### 1. Clone the repository
 
 ```bash
 git clone <your-repo-url>
 cd <your-repo-directory>
 ```
 
-### 2. Add your OpenAI API key
+#### 2. Add your OpenAI API key
 Create a .env file in the root directory with your key:
 ```bash
 OPENAI_API_KEY=<your-openai-api-key>
 ```
 
-### 3. Add the GO annotation file
+#### 3. Add the GO annotation file
 Copy the goa_human.gaf file into the data/ directory.
 
-### 4. Create the environment
+#### 4. Create the environment
 ```bash
 conda env create -f environment.yml
 ```
