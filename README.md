@@ -36,3 +36,11 @@ The system enables users to:
 git clone <your-repo-url>
 cd <your-repo-directory>
 ```
+
+### 2. Add your OpenAI API key
+Create a .env file in the root directory with your key:
+```bash
+OPENAI_API_KEY = <your-openai-api-key>
+```
+
+
