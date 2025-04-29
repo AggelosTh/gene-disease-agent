@@ -1,6 +1,4 @@
-# gene-disease-agent
-
-# Gene-Disease Hypothesis Generation Agent
+# Gene-Pathway Disease Hypothesis Generation Agent
 
 This project implements an LLM-powered agent designed to generate hypothesis by linking genes to diseases. The system uses curated data from KEGG pathways and Gene Ontology (GO) annotations, along with a modular toolset and a ReAct-based reasoning loop to dynamically respond to natural language queries.
 
