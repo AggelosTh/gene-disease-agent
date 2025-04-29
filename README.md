@@ -30,23 +30,39 @@ The system enables users to:
 
 ## Setup Instructions
 
-#### 1. Clone the repository
+1. Clone the repository
 
 ```bash
 git clone <your-repo-url>
 cd <your-repo-directory>
 ```
 
-#### 2. Add your OpenAI API key
+2. Add your OpenAI API key
 Create a .env file in the root directory with your key:
 ```bash
 OPENAI_API_KEY=<your-openai-api-key>
 ```
 
-#### 3. Add the GO annotation file
+3. Add the GO annotation file
 Copy the goa_human.gaf file into the data/ directory.
 
-#### 4. Create the environment
+4. Create the environment and activate it
 ```bash
 conda env create -f environment.yml
+conda activate gene_disease_env
+```
+
+5. Parse the data
+```bash
+python parse_data.py
+```
+
+6. Visualize the GO-term data
+```bash
+python plots.py
+```
+
+7. Run the agent with an input query by simply running:
+```bash
+python gene_go_agent.py --query '<your-input-query>'
 ```
