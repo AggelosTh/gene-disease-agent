@@ -10,7 +10,6 @@ from langchain.agents import AgentType, Tool, initialize_agent
 from langchain.tools import tool
 from langchain_openai import ChatOpenAI
 
-# Set up command line argument parsing
 parser = ArgumentParser(description="Gene-GO Agent")
 
 parser.add_argument(
