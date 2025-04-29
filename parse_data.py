@@ -13,7 +13,12 @@ from config import ROOT_DIR
 
 
 def get_gene_symbol(gene_id: str) -> str:
-    """Fetch gene symbol from KEGG API given a gene ID."""
+    """Fetch gene symbol from KEGG API given a gene ID.
+    Args:
+        gene_id (str): Gene ID to fetch the symbol for.
+    Returns:
+        str: Gene symbol if found, None otherwise.
+    """
     url = f"http://rest.kegg.jp/get/{gene_id}"
     response = requests.get(url)
     if response.status_code == 200:
@@ -27,7 +32,12 @@ def get_gene_symbol(gene_id: str) -> str:
 
 
 def fetch_gene_id_to_symbol_mapping(gene_ids: list, sleep_time: float = 0.5) -> dict:
-    """Fetch gene symbols for a list of gene IDs."""
+    """Fetch gene symbols for a list of gene IDs.
+    Args:
+        gene_ids (list): List of gene IDs to fetch symbols for.
+        sleep_time (float): Time to sleep between API calls to avoid rate limiting.
+    Returns:
+        dict: A dictionary mapping gene IDs to gene symbols."""
     gene_id_to_symbol = {}
     for gene_id in gene_ids:
         if gene_id not in gene_id_to_symbol:
@@ -85,7 +95,11 @@ def parse_kgml_directory(directory_path: str) -> list:
 
 
 def save_to_csv(links: list, output_path: str):
-    """Save the extracted links to a CSV file."""
+    """Save the extracted links to a CSV file.
+    Args:
+        links (list): List of dictionaries containing gene-pathway links.
+        output_path (str): Path to the output CSV file.
+    """
     df = pd.DataFrame(links)
     df.to_csv(output_path, index=False)
 
