@@ -9,8 +9,11 @@ from config import ROOT_DIR
 from network import load_graphml_graph, visualize_subgraph
 
 
-def plot_top_go_terms(path):
-    """Plot the top 10 most frequent GO terms."""
+def plot_top_go_terms(path: str):
+    """Plot the top 10 most frequent GO terms.
+    Args:
+        path (str): Path to the CSV file containing gene-GO term links.
+    """
     df_goa = pd.read_csv(os.path.join(ROOT_DIR, path))
     top_go_terms = df_goa["go_term"].value_counts().head(10)
 

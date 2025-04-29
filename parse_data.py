@@ -110,7 +110,6 @@ def parse_gaf_file(file_path: str) -> pd.DataFrame:
         file_path (str): Path to the GAF file.
     Returns:
         pd.DataFrame: A DataFrame containing gene-GO term links."""
-    # Read the GAF file, skipping comments and using tab as the separator
     df = pd.read_csv(file_path, sep="\t", comment="!", header=None, low_memory=False)
     df = df[[2, 4]]  # Column 2: gene symbol, Column 5: GO term
     df.columns = ["gene_symbol", "go_term"]
@@ -125,7 +124,6 @@ if __name__ == "__main__":
     # Collect all unique gene IDs
     unique_gene_ids = list({link["gene_id"] for link in kgml_links})
 
-    # Fetch gene symbols
     mapping_file = os.path.join(ROOT_DIR, "data/gene_id_to_symbol.pkl")
     if os.path.exists(mapping_file):
         print("Loading cached gene_id to symbol mapping...")
@@ -137,7 +135,6 @@ if __name__ == "__main__":
         with open(mapping_file, "wb") as f:
             pickle.dump(gene_id_to_symbol, f)
 
-    # Add gene symbols to the links
     for link in kgml_links:
         link["gene_symbol"] = gene_id_to_symbol.get(link["gene_id"], None)
 

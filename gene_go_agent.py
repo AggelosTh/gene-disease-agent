@@ -72,13 +72,21 @@ with open(args.gene_id_to_symbol_file, "rb") as f:
 symbol_to_gene_id = {v: k for k, v in gene_id_to_symbol.items()}
 
 
-def convert_id_to_symbol(gene_id):
-    """Convert a gene ID to its symbol"""
+def convert_id_to_symbol(gene_id: str) -> str:
+    """Convert a gene ID to its symbol
+    Args:
+        gene_id (str): The gene ID (e.g., 'hsa:6662')
+    Returns:
+        str: The gene symbol (e.g., 'SOX9')"""
     return gene_id_to_symbol.get(gene_id, gene_id)
 
 
-def convert_symbol_to_id(gene_symbol):
-    """Convert a gene symbol to its ID"""
+def convert_symbol_to_id(gene_symbol: str) -> str:
+    """Convert a gene symbol to its ID
+    Args:
+        gene_symbol (str): The gene symbol (e.g., 'SOX9')
+    Returns:
+        str: The gene ID (e.g., 'hsa:6662')"""
     return symbol_to_gene_id.get(gene_symbol, gene_symbol)
 
 
@@ -214,7 +222,6 @@ def generate_hypothesis(input_str: str) -> str:
     if disease_name.lower() not in diseases.lower():
         return f"Gene {gene_symbol} (ID: {gene_id}) is not directly associated with {disease_name} in pathway data."
 
-    # Get GO terms
     go_terms = get_gene_go_terms(gene_symbol)
     if "not found" in go_terms:
         return go_terms
@@ -288,12 +295,12 @@ def find_downstream_genes(gene_input: str) -> dict:
         if gene_id == gene_input and not gene_input.startswith("hsa:"):
             return {"error": f"Could not find gene ID for symbol {gene_input}."}
 
-    # 1. Find all pathways containing the gene
+    # Find all pathways containing the gene
     pathways = gene_pathway_df[gene_pathway_df["gene_id"] == gene_id][
         "pathway"
     ].unique()
 
-    # 2. Get all other genes in these pathways
+    # Get all other genes in these pathways
     downstream_ids = []
     for pathway in pathways:
         pathway_genes = gene_pathway_df[gene_pathway_df["pathway"] == pathway][
@@ -335,7 +342,7 @@ def analyze_downstream_effects(gene_input: str) -> str:
     else:
         gene_symbol = convert_id_to_symbol(gene_id)
 
-    # 1. Find downstream genes
+    # Find downstream genes
     downstream_data = find_downstream_genes(gene_id)
     if "error" in downstream_data:
         return downstream_data["error"]
@@ -343,14 +350,14 @@ def analyze_downstream_effects(gene_input: str) -> str:
     if not downstream_data["downstream"]:
         return f"No downstream genes found for {gene_symbol} (ID: {gene_id}) in pathway data."
 
-    # 2. Analyze pathway context
+    # Analyze pathway context
     pathway_counts = {}
     for pathway in downstream_data["pathways"]:
         pathway_counts[pathway] = len(
             gene_pathway_df[gene_pathway_df["pathway"] == pathway]
         )
 
-    # 3. Generate report
+    # Generate report
     report = [
         f"Downstream analysis for {gene_symbol} (ID: {gene_id}):",
         f"- Found in {len(downstream_data['pathways'])} pathways",
@@ -358,14 +365,14 @@ def analyze_downstream_effects(gene_input: str) -> str:
         "\nPathway context:",
     ]
 
-    # Sort pathways by gene count (complexity)
+    # Sort pathways by gene count
     sorted_pathways = sorted(pathway_counts.items(), key=lambda x: x[1], reverse=True)
     for pathway, count in sorted_pathways:
         report.append(f"- {pathway}: {count} total genes")
 
-    # Show some downstream genes
+    # Show top 5 downstream genes
     report.append("\nTop downstream genes:")
-    for gene in downstream_data["downstream"][:5]:  # Show top 5 downstream genes
+    for gene in downstream_data["downstream"][:5]:
         report.append(f"- {gene}")
 
     report.append("\nNote: This analysis is based on pathway topology from KEGG data.")
@@ -382,7 +389,6 @@ def get_pathway_info(pathway_name: str) -> str:
         str: A report summarizing the pathway and its associated genes
     """
 
-    # Check if pathway exists
     if pathway_name not in gene_pathway_df["pathway"].values:
         # Try fuzzy matching
         all_pathways = gene_pathway_df["pathway"].unique()
@@ -518,7 +524,6 @@ def analyze_multi_gene_impact(genes_input: str) -> str:
                 return f"Gene symbol {gene} not found in mapping."
             gene_ids.append(gene_id)
 
-    # Validate genes in graph
     missing_genes = [g for g in gene_symbols if g not in G.nodes]
     if missing_genes:
         return f"These genes were not found in the graph: {', '.join(missing_genes)}"
@@ -529,7 +534,6 @@ def analyze_multi_gene_impact(genes_input: str) -> str:
         go_terms = [n for n in G.neighbors(gene) if G.nodes[n].get("type") == "go_term"]
         all_go_terms.append(set(go_terms))
 
-    # Find shared GO terms
     shared_go_terms = set.intersection(*all_go_terms) if all_go_terms else set()
 
     # Collect disease associations
