@@ -17,13 +17,6 @@ The system enables users to:
 - Analyze downstream effects within biological pathways
 - Generate efficient hypothesis about gene-disease links
 
-## Features
-
-- Natural language querying
-- ReAct-style multi-step reasoning
-- Pathway and ontology tool orchestration
-- Modular and extendable tool design
-
 ---
 
 ## Setup Instructions
@@ -41,8 +34,7 @@ Create a .env file in the root directory with your key:
 OPENAI_API_KEY=<your-openai-api-key>
 ```
 
-3. Add the GO annotation file
-Copy the goa_human.gaf file into the data/ directory.
+3. Move the ```goa_human.gaf``` file into the ```data``` directory.
 
 4. Create the environment and activate it
 ```bash
