@@ -10,7 +10,7 @@ from langchain.agents import AgentType, Tool, initialize_agent
 from langchain.tools import tool
 from langchain_openai import ChatOpenAI
 
-parser = ArgumentParser(description="Gene-GO Agent")
+parser = ArgumentParser(description="Pathway and disease hypothesis generation agent")
 
 parser.add_argument(
     "--temperature",
