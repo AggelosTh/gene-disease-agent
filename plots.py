@@ -14,6 +14,9 @@ def plot_top_go_terms(path: str):
     Args:
         path (str): Path to the CSV file containing gene-GO term links.
     """
+    # Create the directory 'plots' if it doesn't exist
+    os.makedirs(os.path.join(ROOT_DIR, "plots"), exist_ok=True)
+
     df_goa = pd.read_csv(os.path.join(ROOT_DIR, path))
     top_go_terms = df_goa["go_term"].value_counts().head(10)
 
@@ -22,12 +25,12 @@ def plot_top_go_terms(path: str):
     plt.title("Top 10 Most Frequent GO Terms")
     plt.gca().invert_yaxis()
     plt.tight_layout()
-    plt.savefig(os.path.join(ROOT_DIR, "top_go_terms.png"), dpi=300)
+    plt.savefig(os.path.join(ROOT_DIR, "plots", "top_go_terms.png"), dpi=300)
     plt.show()
 
 
 # Load the graph and visualize it
-G = load_graphml_graph("data/gene_go_network.graphml")
+G = load_graphml_graph(os.path.join(ROOT_DIR, "data", "gene_go_network.graphml"))
 visualize_subgraph(G)
 # Plot the top GO terms
-plot_top_go_terms("data/gene_go_links.csv")
+plot_top_go_terms(os.path.join(ROOT_DIR, "data", "gene_go_links.csv"))

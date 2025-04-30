@@ -8,6 +8,9 @@ import pandas as pd
 
 from config import ROOT_DIR
 
+# Create the directory 'plots' if it doesn't exist
+os.makedirs(os.path.join(ROOT_DIR, "plots"), exist_ok=True)
+
 
 def build_graph(data_path: str):
     """Build a graph from the Gene Ontology Annotation (GOA) data.
@@ -127,5 +130,5 @@ def visualize_subgraph(G: nx.Graph, max_nodes: int = 100):
     plt.legend()
     plt.axis("off")
     plt.tight_layout()
-    plt.savefig("gene_go_network.png", dpi=300)
+    plt.savefig(os.path.join(ROOT_DIR, "plots", "gene_go_network.png"), dpi=300)
     plt.show()
