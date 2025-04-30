@@ -1,8 +1,12 @@
 """Build and visualize a Gene Ontology network from GOA data."""
 
+import os
+
 import matplotlib.pyplot as plt
 import networkx as nx
 import pandas as pd
+
+from config import ROOT_DIR
 
 
 def build_graph(data_path: str):
@@ -10,6 +14,7 @@ def build_graph(data_path: str):
     Args:
         data_path (str): Path to the GOA data file.
     """
+    print(f"Building graph from {data_path}...")
     # Load the GOA data
     df_goa = pd.read_csv(data_path)
 
@@ -22,7 +27,7 @@ def build_graph(data_path: str):
         G.add_node(row["go_term"], type="go_term")
         G.add_edge(row["gene_symbol"], row["go_term"], relation="go_annotation")
 
-    nx.write_graphml(G, "gene_go_network.graphml")
+    nx.write_graphml(G, os.path.join(ROOT_DIR, "data", "gene_go_network.graphml"))
 
     print(f"Graph Statistics:")
     print(f"Total nodes: {G.number_of_nodes()}")

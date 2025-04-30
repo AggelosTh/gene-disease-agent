@@ -33,7 +33,7 @@ parser.add_argument(
 parser.add_argument(
     "--graphml_file",
     type=str,
-    default="gene_go_network.graphml",
+    default="data/gene_go_network.graphml",
     help="Path to the GraphML file containing the gene-GO network",
 )
 parser.add_argument(

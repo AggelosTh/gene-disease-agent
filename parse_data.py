@@ -10,6 +10,7 @@ import pandas as pd
 import requests
 
 from config import ROOT_DIR
+from network import build_graph
 
 
 def get_gene_symbol(gene_id: str) -> str:
@@ -147,3 +148,7 @@ if __name__ == "__main__":
     df_goa = parse_gaf_file(os.path.join(ROOT_DIR, "data/goa_human.gaf"))
     df_goa.to_csv(os.path.join(ROOT_DIR, "data/gene_go_links.csv"), index=False)
     print("GAF file parsed and saved.")
+
+    # Build the graph from the GAF data
+    build_graph(data_path=os.path.join(ROOT_DIR, "data/gene_go_links.csv"))
+    print("Graph built and saved as gene_go_network.graphml.")
