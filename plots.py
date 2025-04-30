@@ -27,7 +27,7 @@ def plot_top_go_terms(path: str):
 
 
 # Load the graph and visualize it
-G = load_graphml_graph("gene_go_network.graphml")
+G = load_graphml_graph("data/gene_go_network.graphml")
 visualize_subgraph(G)
 # Plot the top GO terms
 plot_top_go_terms("data/gene_go_links.csv")
