@@ -28,8 +28,7 @@ git clone <your-repo-url>
 cd <your-repo-directory>
 ```
 
-Add your OpenAI API key
-Create a .env file in the root directory with your key:
+Create a .env file in the root directory and add your Openai api key:
 ```bash
 OPENAI_API_KEY=<your-openai-api-key>
 ```
