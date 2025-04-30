@@ -1,0 +1,8 @@
+pandas
+networkx
+langchain
+langchain-openai
+dotenv
+matplotlib
+requests
+fuzzywuzzy
